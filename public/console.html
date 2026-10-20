@@ -2049,7 +2049,9 @@ button:active:not(:disabled) {
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="setStickerRemark"> <span><b>qq_set_sticker_remark</b><span class="meta">修改 QQ 官方表情备注（默认禁用，慎用）</span></span></label>
-        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条（只能发语音库里的音频；偶然而为的强表达）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendVoice"> <span><b>qq_send_voice / qq_list_voices</b><span class="meta">发送语音条（只能发语音库里的音频；偶然而为的强表达）</span></span></label><label class="v2-tool-item"><input type="checkbox" data-v2-tool="qzone"> <span><b>qq_list_qzone_posts / qq_list_qzone_feeds</b><span class="meta">读 QQ 空间：说说列表与好友动态（只读）</span></span></label>
+<label class="v2-tool-item"><input type="checkbox" data-v2-tool="qzoneWrite"> <span><b>qq_post_qzone / qq_comment_qzone / qq_like_qzone / qq_delete_qzone_post</b><span class="meta">写 QQ 空间：发说说、评论、点赞/取消、删说说（不含改可见权限与拉黑）</span></span></label>
+      
       </div>
       <div class="meta" style="margin-top:6px">二代黑话学习：AI 可用 <code>qq_slang_submit</code> 提交陌生词，也可由桥接自动提取；管理员在「黑话词库」页面筛选确认后，词条会自动写入黑话提示词并注入 <code>qq_get_prompt</code> 与后续唤醒。</div>
 
@@ -2431,7 +2433,13 @@ button:active:not(:disabled) {
         <tr><td>qq_reply</td><td>专用“引用/回复”：在群里引用某条消息并发送文本</td></tr>
         <tr><td>qq_send_private_message</td><td>发私聊；可选 <code>replyToMessageId</code> 引用/回复</td></tr>
         <tr><td>qq_slang_query</td><td>查询已确认黑话/梗/网络表达（只读）</td></tr>
-        <tr><td>qq_slang_submit</td><td>AI 提交陌生词/黑话给管理员筛选</td></tr>
+        <tr><td>qq_slang_submit</td><td>AI 提交陌生词/黑话给管理员筛选</td></tr><tr><td>qq_list_qzone_posts</td><td>QQ 空间说说列表（只读；不传 <code>targetUin</code> 则读机器人自己的空间）</td></tr>
+<tr><td>qq_list_qzone_feeds</td><td>QQ 空间好友动态（只读；仅首页可靠，深翻页未实现）</td></tr>
+<tr><td>qq_post_qzone</td><td>发说说（固定用空间默认可见范围，不接受 ugc_right）</td></tr>
+<tr><td>qq_comment_qzone</td><td>评论说说（需 <code>tid</code>）</td></tr>
+<tr><td>qq_like_qzone</td><td>点赞 / 取消点赞（<code>like:false</code> 为取消）</td></tr>
+<tr><td>qq_delete_qzone_post</td><td>删除自己的说说（需 <code>tid</code>）</td></tr>
+      
       </table>
       <div class="meta" style="margin-top:10px">二代仿真模式工具：qq_get_prompt / qq_get_unread_messages / qq_get_recent_messages / qq_social_state / qq_send_burst / qq_send_message / qq_wait_for_messages / qq_set_wake_config / qq_mark_read / qq_memory_* / qq_slang_query / qq_slang_submit 等。</div>
     </section>
