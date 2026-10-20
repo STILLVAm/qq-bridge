@@ -1370,4 +1370,160 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
   );
 }
 
+// ── QQ 空间工具（2026-10-19 用户授权）────────────────────────────────────────
+// 授权范围：读说说/读好友动态 + 发说说/评论/点赞/取消点赞/删说说。
+// 明确不开放：set_qzone_msg_right（改可见权限）、set_qzone_ban（空间拉黑）。
+// 开关：socialV2.tools.qzone（只读，默认开）、socialV2.tools.qzoneWrite（写，默认开）。
+// 与聊天类工具的区别：空间动作不属于任何会话上下文，因此不走桥接的 x-agent-token，
+// 直接以机器人账号调 OneBot HTTP API；代价是权限只能靠这里的注册开关控制。
+if (cfg.socialV2?.tools?.qzone !== false) {
+  server.tool(
+    'qq_list_qzone_posts',
+    '获取 QQ 空间说说列表（只读，默认机器人自己的空间）。返回每条说说的 tid、正文、发布时间与图片；tid 用于评论/点赞/删除。已知坑：空间里一条说说都没有时 SnowLuma 会报「响应结构异常」，因为它把 msglist:null 当成异常，不是工具坏了。',
+    {
+      targetUin: z.union([z.number(), z.string()]).optional().describe('要查看的 QQ 号（省略＝机器人自己）'),
+      pos: z.number().optional().describe('起始偏移，默认 0'),
+      num: z.number().optional().describe('条数，默认 10')
+    },
+    async ({ targetUin, pos, num }) => {
+      try {
+        const data = await onebot('get_qzone_msg_list', {
+          ...(targetUin != null ? { target_uin: Number(targetUin) } : {}),
+          pos: Number(pos ?? 0),
+          num: Number(num ?? 10)
+        });
+        return { content: [{ type: 'text', text: serializeModelData(data) }] };
+      } catch (error) {
+        const detail = String(error?.message ?? error);
+        // 空空间不是错误：SnowLuma 把 msglist:null 判成「响应结构异常」，据 payload 还原成人话。
+        if (detail.includes('msglist":null') || detail.includes('msglist:null')) {
+          return { content: [{ type: 'text', text: '这个空间目前没有任何说说（共 0 条）。SnowLuma 把空列表当成「响应结构异常」上报，属已知表现，不是工具故障。' }] };
+        }
+        return { content: [{ type: 'text', text: `读取说说失败：${detail}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'qq_list_qzone_feeds',
+    '获取 QQ 空间好友动态（只读）。返回每条动态的 uin、昵称、时间与 html 片段。page_num 仅首页可靠，深翻页未实现（要更早的动态得靠时间游标，SnowLuma 还没做）。',
+    {
+      pageNum: z.number().optional().describe('页码，默认 1'),
+      count: z.number().optional().describe('条数，默认 10')
+    },
+    async ({ pageNum, count }) => {
+      try {
+        const data = await onebot('get_qzone_feeds', {
+          page_num: Number(pageNum ?? 1),
+          count: Number(count ?? 10)
+        });
+        // SnowLuma 返回的是 QQ 空间的原始 HTML 片段（实测 2 条≈92KB），直接塞进上下文会吃掉预算。
+        // 这里只留「谁、什么时候、说了什么」三样，正文截断到 300 字。
+        const feeds = (Array.isArray(data?.feeds) ? data.feeds : []).map((f) => ({
+          uin: f?.uin,
+          nickname: f?.nickname,
+          time: f?.time,
+          text: String(f?.html ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+        }));
+        return { content: [{ type: 'text', text: serializeModelData({ total: data?.total ?? feeds.length, feeds }) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `读取好友动态失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.tools?.qzoneWrite !== false) {
+  server.tool(
+    'qq_post_qzone',
+    '发表一条 QQ 空间说说（写操作，发出去就挂在机器人账号的空间上，好友可见）。content 为纯文字；要配图先传可公开访问的图片 URL。可见权限固定用空间默认值——本工具刻意不暴露 ugc_right，避免越权改权限。',
+    {
+      content: z.string().describe('说说正文，最多 1000 字'),
+      images: z.array(z.string()).optional().describe('图片 URL 列表（可选）')
+    },
+    async ({ content, images }) => {
+      const text = String(content ?? '').trim();
+      if (!text) {
+        return { content: [{ type: 'text', text: '拒绝：说说正文不能为空' }], isError: true };
+      }
+      if (text.length > 1000) {
+        return { content: [{ type: 'text', text: `拒绝：正文 ${text.length} 字，超过 1000 字上限` }], isError: true };
+      }
+      try {
+        const data = await onebot('send_qzone_msg', {
+          content: text,
+          ...(Array.isArray(images) && images.length ? { images } : {})
+        });
+        return { content: [{ type: 'text', text: `已发表。${serializeModelData(data)}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `发表说说失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'qq_comment_qzone',
+    '评论一条 QQ 空间说说（写操作，以机器人账号发出）。tid 来自 qq_list_qzone_posts；评论别人的说说时同时传 targetUin（对方 QQ 号）。',
+    {
+      tid: z.string().describe('说说 tid'),
+      content: z.string().describe('评论正文'),
+      targetUin: z.union([z.number(), z.string()]).optional().describe('说说所属 QQ 号（省略＝机器人自己）')
+    },
+    async ({ tid, content, targetUin }) => {
+      const text = String(content ?? '').trim();
+      if (!text) {
+        return { content: [{ type: 'text', text: '拒绝：评论内容不能为空' }], isError: true };
+      }
+      try {
+        const data = await onebot('comment_qzone', {
+          tid: String(tid),
+          content: text,
+          ...(targetUin != null ? { target_uin: Number(targetUin) } : {})
+        });
+        return { content: [{ type: 'text', text: `已评论。${serializeModelData(data)}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `评论失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'qq_like_qzone',
+    '给 QQ 空间说说点赞，或取消点赞（写操作）。like 默认 true，传 false 表示取消。',
+    {
+      tid: z.string().describe('说说 tid'),
+      like: z.boolean().optional().describe('true=点赞（默认），false=取消点赞'),
+      targetUin: z.union([z.number(), z.string()]).optional().describe('说说所属 QQ 号（省略＝机器人自己）'),
+      abstime: z.number().optional().describe('说说发布时间戳（部分实现要求，取自列表返回的 createTime）')
+    },
+    async ({ tid, like, targetUin, abstime }) => {
+      const action = like === false ? 'unlike_qzone' : 'like_qzone';
+      try {
+        const data = await onebot(action, {
+          tid: String(tid),
+          ...(targetUin != null ? { target_uin: Number(targetUin) } : {}),
+          ...(abstime != null ? { abstime: Number(abstime) } : {})
+        });
+        return { content: [{ type: 'text', text: `${action === 'like_qzone' ? '已点赞' : '已取消点赞'}。${serializeModelData(data)}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `${action === 'like_qzone' ? '点赞' : '取消点赞'}失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'qq_delete_qzone_post',
+    '删除一条 QQ 空间说说（写操作，不可撤销）。只用于机器人自己空间里的说说；tid 来自 qq_list_qzone_posts。',
+    { tid: z.string().describe('说说 tid') },
+    async ({ tid }) => {
+      try {
+        const data = await onebot('delete_qzone_msg', { tid: String(tid) });
+        return { content: [{ type: 'text', text: `已删除。${serializeModelData(data)}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `删除失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
 await server.connect(new StdioServerTransport());
