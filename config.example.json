@@ -140,7 +140,9 @@
       "stickerNote": true,
       "collectSticker": true,
       "getSelfImage": true,
-      "sendVoice": false
+      "sendVoice": false,
+      "qzone": true,
+      "qzoneWrite": true
     },
     "wake": {
       "defaultMode": "diving",
